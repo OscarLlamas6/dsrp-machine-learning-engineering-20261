@@ -2,6 +2,8 @@
 
 ![Aprendizaje Supervisado](modulo-1-aprendizaje-supervisado/assets/header.png)
 
+**Profesor:** Miguel Arquez
+
 Curso de Machine Learning y AI Engineering. Cada módulo es un conjunto de notebooks de Jupyter con teoría, fórmulas, visualizaciones y ejemplos prácticos sobre datasets reales de Kaggle.
 
 ## Módulos
@@ -61,8 +63,8 @@ Los notebooks usan tres datasets reales. **Descárgalos manualmente** desde Kagg
 | Notebooks | Dataset | URL | Archivo en `data/` |
 |---|---|---|---|
 | 02, 03 | House Prices — Advanced Regression Techniques | https://www.kaggle.com/c/house-prices-advanced-regression-techniques | `housing_train.csv` (y opcionalmente `housing_test.csv`) |
-| 04, 05 | Telco Customer Churn | https://www.kaggle.com/datasets/blastchar/telco-customer-churn | `WA_Fn-UseC_-Telco-Customer-Churn.csv` |
-| (referencia) | Loan Default Dataset (Yasser H) | https://www.kaggle.com/datasets/yasserh/loan-default-dataset | `Loan_Default.csv` |
+| 04 | Telco Customer Churn | https://www.kaggle.com/datasets/blastchar/telco-customer-churn | `WA_Fn-UseC_-Telco-Customer-Churn.csv` |
+| 05 | Loan Default Dataset (Yasser H) | https://www.kaggle.com/datasets/yasserh/loan-default-dataset | `Loan_Default.csv` |
 
 > El dataset de House Prices es una competencia de Kaggle: viene partido en `train.csv` (con la columna `SalePrice`) y `test.csv` (sin etiqueta, para enviar al leaderboard). En estos notebooks **solo usamos `housing_train.csv`** y lo partimos internamente con `train_test_split`. Renómbralo a `housing_train.csv` (y `housing_test.csv` si te lo quieres guardar) al moverlo a `data/`.
 
@@ -71,10 +73,10 @@ Estructura final de `data/` esperada:
 ```
 data/
 ├── .gitkeep
-├── housing_train.csv
+├── housing_train.csv                             # nb 02, 03
 ├── housing_test.csv                              # opcional (no se usa en el módulo)
-├── WA_Fn-UseC_-Telco-Customer-Churn.csv
-└── Loan_Default.csv                              # opcional (referencia)
+├── WA_Fn-UseC_-Telco-Customer-Churn.csv          # nb 04
+└── Loan_Default.csv                              # nb 05
 ```
 
 > Los CSV están en `.gitignore` (carpeta `data/` ignorada salvo `.gitkeep`), así que no se suben al repositorio.
