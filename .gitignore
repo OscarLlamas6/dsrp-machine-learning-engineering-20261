@@ -1,0 +1,19 @@
+# Entorno virtual de uv
+.venv/
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Datasets locales (se descargan manualmente desde Kaggle)
+data/*
+!data/.gitkeep
+
+# Sistema operativo / editores
+.DS_Store
+.idea/
+.vscode/
