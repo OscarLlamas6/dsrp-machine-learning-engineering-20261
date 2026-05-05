@@ -3,10 +3,13 @@ set -euo pipefail
 
 BRANCH="${1:-main}"
 
-echo "🔄 Fetching from origin (fork)..."
-git fetch origin
+echo "🔄 Fetching from upstream (repo original del profesor)..."
+git fetch upstream
 
-echo "⬇️  Pulling origin/$BRANCH into $BRANCH..."
-git pull origin "$BRANCH"
+echo "⬇️  Merging upstream/$BRANCH into $BRANCH..."
+git merge upstream/"$BRANCH"
+
+echo "⬆️  Pushing updated $BRANCH to origin (tu fork)..."
+git push origin "$BRANCH"
 
 echo "✅ Sync complete. Branch: $BRANCH"
