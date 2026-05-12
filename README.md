@@ -9,6 +9,8 @@ Curso de Machine Learning y AI Engineering. Cada módulo es un conjunto de noteb
 ## Módulos
 
 - `modulo-1-aprendizaje-supervisado/` — Fundamentos de aprendizaje supervisado: regresión lineal, árboles de regresión, regresión logística y árboles de clasificación.
+- `modulo-2-aprendizaje-no-supervisado/` — Aprendizaje no supervisado: introducción, clustering (K-Means y jerárquico), reducción de dimensionalidad (PCA + visualización de clusters) y reglas de asociación (Apriori).
+- `modulo-3-introduccion-ai-engineering/` — Introducción a AI Engineering: LLMs y Transformers, APIs (OpenAI / Hugging Face) con chat completions / embeddings / multimodal, prompt engineering + parámetros + tokenización, alternativas (Ollama y Gemini), aplicación con LangChain (RAG mini), y comparación LLM vs modelos clásicos en problemas supervisados y no supervisados.
 
 ## Requisitos
 
@@ -54,7 +56,7 @@ uv --version
 uv sync
 ```
 
-Esto instala numpy, pandas, scikit-learn, matplotlib, seaborn, statsmodels y jupyter.
+Esto instala numpy, pandas, scikit-learn, scipy, matplotlib, seaborn, statsmodels, mlxtend, jupyter, los SDK de AI engineering (openai, google-generativeai, ollama, huggingface-hub, tiktoken, python-dotenv) y LangChain (langchain, langchain-openai, langchain-community, langchain-chroma, langchain-text-splitters).
 
 ### 4. Descargar los datasets de Kaggle
 
@@ -62,9 +64,33 @@ Los notebooks usan tres datasets reales. **Descárgalos manualmente** desde Kagg
 
 | Notebooks | Dataset | URL | Archivo en `data/` |
 |---|---|---|---|
-| 02, 03 | House Prices — Advanced Regression Techniques | https://www.kaggle.com/c/house-prices-advanced-regression-techniques | `housing_train.csv` (y opcionalmente `housing_test.csv`) |
-| 04 | Telco Customer Churn | https://www.kaggle.com/datasets/blastchar/telco-customer-churn | `WA_Fn-UseC_-Telco-Customer-Churn.csv` |
-| 05 | Loan Default Dataset (Yasser H) | https://www.kaggle.com/datasets/yasserh/loan-default-dataset | `Loan_Default.csv` |
+| Mód. 1 — 02, 03 | House Prices — Advanced Regression Techniques | https://www.kaggle.com/c/house-prices-advanced-regression-techniques | `housing_train.csv` (y opcionalmente `housing_test.csv`) |
+| Mód. 1 — 04 / Mód. 2 — 02, 03 | Telco Customer Churn | https://www.kaggle.com/datasets/blastchar/telco-customer-churn | `WA_Fn-UseC_-Telco-Customer-Churn.csv` |
+| Mód. 1 — 05 | Loan Default Dataset (Yasser H) | https://www.kaggle.com/datasets/yasserh/loan-default-dataset | `Loan_Default.csv` |
+
+> El notebook `04_reglas_asociacion.ipynb` del módulo 2 **no necesita descarga**: genera transacciones sintéticas de canasta de mercado en el propio notebook.
+
+### 4.b API keys y servicios externos para el módulo 3
+
+El módulo 3 hace llamadas a APIs de LLMs. **No son obligatorias para leer el contenido**, pero si quieres ejecutar las celdas de ejemplo necesitas configurar las keys correspondientes en variables de entorno (recomendado: archivo `.env` en la raíz del repo, ya está en `.gitignore`).
+
+| Notebook | Servicio | Variable | Dónde se obtiene |
+|---|---|---|---|
+| 02, 03, 05, 06 | OpenAI | `OPENAI_API_KEY` | https://platform.openai.com/api-keys |
+| 02 | Hugging Face (opcional) | `HF_TOKEN` | https://huggingface.co/settings/tokens |
+| 04 | Ollama (local, sin key) | — | https://ollama.com/download |
+| 04 | Gemini | `GOOGLE_API_KEY` | https://aistudio.google.com/app/apikey |
+| 06 | Reusa el dataset Telco (`WA_Fn-UseC_-Telco-Customer-Churn.csv`) ya descargado para módulos 1 y 2 | — | — |
+
+Ejemplo de `.env`:
+
+```
+OPENAI_API_KEY=sk-...
+HF_TOKEN=hf_...
+GOOGLE_API_KEY=...
+```
+
+Para Ollama, además de instalarlo, descarga al menos un modelo: `ollama pull llama3.2` y `ollama pull nomic-embed-text` (para embeddings).
 
 > El dataset de House Prices es una competencia de Kaggle: viene partido en `train.csv` (con la columna `SalePrice`) y `test.csv` (sin etiqueta, para enviar al leaderboard). En estos notebooks **solo usamos `housing_train.csv`** y lo partimos internamente con `train_test_split`. Renómbralo a `housing_train.csv` (y `housing_test.csv` si te lo quieres guardar) al moverlo a `data/`.
 
@@ -134,10 +160,22 @@ uv add <paquete>
 ├── uv.lock
 ├── .python-version
 ├── data/                              # datasets locales (no versionados)
-└── modulo-1-aprendizaje-supervisado/
-    ├── 01_introduccion_aprendizaje_supervisado.ipynb
-    ├── 02_regresion_lineal.ipynb
-    ├── 03_arboles_decision_regresion.ipynb
-    ├── 04_clasificacion_regresion_logistica.ipynb
-    └── 05_arboles_decision_clasificacion.ipynb
+├── modulo-1-aprendizaje-supervisado/
+│   ├── 01_introduccion_aprendizaje_supervisado.ipynb
+│   ├── 02_regresion_lineal.ipynb
+│   ├── 03_arboles_decision_regresion.ipynb
+│   ├── 04_clasificacion_regresion_logistica.ipynb
+│   └── 05_arboles_decision_clasificacion.ipynb
+├── modulo-2-aprendizaje-no-supervisado/
+│   ├── 01_introduccion_aprendizaje_no_supervisado.ipynb
+│   ├── 02_clustering_kmeans_jerarquico.ipynb
+│   ├── 03_reduccion_dimensionalidad_pca.ipynb
+│   └── 04_reglas_asociacion.ipynb
+└── modulo-3-introduccion-ai-engineering/
+    ├── 01_introduccion_llms_y_genai.ipynb
+    ├── 02_apis_openai_huggingface.ipynb
+    ├── 03_prompt_engineering_y_tokenizacion.ipynb
+    ├── 04_alternativas_ollama_y_gemini.ipynb
+    ├── 05_aplicacion_langchain.ipynb
+    └── 06_llm_vs_modelos_clasicos.ipynb
 ```

@@ -13,6 +13,17 @@ __pycache__/
 data/*
 !data/.gitkeep
 
+# Secrets / variables de entorno (módulo 3 — AI engineering)
+.env
+.env.local
+ai.env
+*.pkl
+
+# Salidas generadas por los ejemplos de notebook (TTS, DALL-E, etc.)
+modulo-3-introduccion-ai-engineering/*.mp3
+modulo-3-introduccion-ai-engineering/*.png
+!modulo-3-introduccion-ai-engineering/assets/*.png
+
 # Sistema operativo / editores
 .DS_Store
 .idea/
