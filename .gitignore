@@ -24,6 +24,19 @@ modulo-3-introduccion-ai-engineering/*.mp3
 modulo-3-introduccion-ai-engineering/*.png
 !modulo-3-introduccion-ai-engineering/assets/*.png
 
+# Terraform (módulo 4)
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/terraform.tfvars
+**/*.auto.tfvars
+**/crash.log
+**/tfplan
+**/backend.hcl
+modulo-4-mlops-y-cloud/terraform/dsrp-values.tfvars
+modulo-4-mlops-y-cloud/terraform/ssh/
+
 # Sistema operativo / editores
 .DS_Store
 .idea/

@@ -11,6 +11,7 @@ Curso de Machine Learning y AI Engineering. Cada módulo es un conjunto de noteb
 - `modulo-1-aprendizaje-supervisado/` — Fundamentos de aprendizaje supervisado: regresión lineal, árboles de regresión, regresión logística y árboles de clasificación.
 - `modulo-2-aprendizaje-no-supervisado/` — Aprendizaje no supervisado: introducción, clustering (K-Means y jerárquico), reducción de dimensionalidad (PCA + visualización de clusters) y reglas de asociación (Apriori).
 - `modulo-3-introduccion-ai-engineering/` — Introducción a AI Engineering: LLMs y Transformers, APIs (OpenAI / Hugging Face) con chat completions / embeddings / multimodal, prompt engineering + parámetros + tokenización, alternativas (Ollama y Gemini), aplicación con LangChain (RAG mini), y comparación LLM vs modelos clásicos en problemas supervisados y no supervisados.
+- `modulo-4-mlops-y-cloud/` — MLOps y herramientas cloud: introducción a MLOps, Azure Blob Storage con el SDK de Python, imagen Docker que entrena un modelo y empuja el `.pkl` a Blob Storage, GitHub Actions para construir/publicar la imagen en `ghcr.io`, Terraform que provisiona una VM `Standard_B1s` en Azure con Docker preinstalado, y un **skill de Claude Code** para bootstrappear repositorios de Data Science / ML.
 
 ## Requisitos
 
@@ -171,11 +172,17 @@ uv add <paquete>
 │   ├── 02_clustering_kmeans_jerarquico.ipynb
 │   ├── 03_reduccion_dimensionalidad_pca.ipynb
 │   └── 04_reglas_asociacion.ipynb
-└── modulo-3-introduccion-ai-engineering/
-    ├── 01_introduccion_llms_y_genai.ipynb
-    ├── 02_apis_openai_huggingface.ipynb
-    ├── 03_prompt_engineering_y_tokenizacion.ipynb
-    ├── 04_alternativas_ollama_y_gemini.ipynb
-    ├── 05_aplicacion_langchain.ipynb
-    └── 06_llm_vs_modelos_clasicos.ipynb
+├── modulo-3-introduccion-ai-engineering/
+│   ├── 01_introduccion_llms_y_genai.ipynb
+│   ├── 02_apis_openai_huggingface.ipynb
+│   ├── 03_prompt_engineering_y_tokenizacion.ipynb
+│   ├── 04_alternativas_ollama_y_gemini.ipynb
+│   ├── 05_aplicacion_langchain.ipynb
+│   └── 06_llm_vs_modelos_clasicos.ipynb
+└── modulo-4-mlops-y-cloud/
+    ├── 01_introduccion_mlops_y_cloud.ipynb
+    ├── 02_azure_blob_storage_sdk.ipynb
+    ├── docker-training/        # Dockerfile + train.py
+    ├── terraform/              # Azure VM + cloud-init
+    └── skills/ds-ml-repo-init/ # Claude Code skill
 ```

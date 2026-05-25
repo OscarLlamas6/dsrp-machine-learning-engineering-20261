@@ -1,0 +1,17 @@
+# Terraform local artifacts
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.*
+crash.log
+tfplan
+
+# Backend config (account-specific; generated por `task backend:setup`)
+backend.hcl
+
+# Variables reales (secretos)
+dsrp-values.tfvars
+*.auto.tfvars
+
+# Llaves SSH generadas por Terraform
+ssh/
