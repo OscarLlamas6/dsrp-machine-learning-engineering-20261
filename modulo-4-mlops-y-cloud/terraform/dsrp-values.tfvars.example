@@ -1,0 +1,25 @@
+# Copy this file to terraform.tfvars and fill in the real values.
+# terraform.tfvars is gitignored.
+
+subscription_id                 = "00000000-0000-0000-0000-000000000000"
+location                        = "eastus"
+prefix                          = "dsrpm4"
+vm_size                         = "Standard_B1s"
+
+# CSV / .pkl land in this container (same one used by notebook 02 and the Docker image).
+azure_storage_container         = "dsrp-modulo4"
+
+# Get this with: az storage account show-connection-string -n <account> -g <rg> -o tsv
+azure_storage_connection_string = "DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net"
+
+# Replace CHANGE_ME with your GitHub username (the image is built by .github/workflows/build-modulo4-image.yml).
+image_ref     = "ghcr.io/CHANGE_ME/dsrp-modulo4-trainer:latest"
+
+# If your GHCR image is public, leave these empty.
+# If private, create a PAT with read:packages and fill them in.
+ghcr_username = ""
+ghcr_token    = ""
+
+# Tighten this to your IP for safety (run `curl ifconfig.me` to find it):
+# ssh_allowed_cidr = "203.0.113.42/32"
+ssh_allowed_cidr = "0.0.0.0/0"

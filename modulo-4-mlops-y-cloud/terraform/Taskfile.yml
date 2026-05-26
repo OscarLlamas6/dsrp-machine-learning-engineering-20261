@@ -1,0 +1,233 @@
+version: '3'
+
+# Taskfile para el módulo 4 — IaC con Terraform sobre Azure.
+# Adaptado del Taskfile original del curso DSRP MLOps (rama 2025-4).
+#
+# Pre-requisitos:
+#   - go-task    → brew install go-task
+#   - terraform  → brew install terraform
+#   - azure-cli  → brew install azure-cli   (luego: az login)
+
+vars:
+  # Backend remoto (state file en Azure Storage)
+  BACKEND_RG_NAME:    "rg-terraform-state-dsrp-modulo4"
+  BACKEND_LOCATION:   "East US"
+  CONTAINER_NAME:     "tfstate"
+  KEY_NAME:           "modulo4.terraform.tfstate"
+
+  # Variables de la infraestructura del módulo
+  TFVARS_FILE:        "dsrp-values.tfvars"
+
+tasks:
+
+  default:
+    desc: "Muestra las tareas disponibles"
+    cmds:
+      - task --list
+
+  # ──────────────────────────────────────────────────────────────────────
+  # BACKEND REMOTO — state file en Azure Storage
+  # ──────────────────────────────────────────────────────────────────────
+
+  backend:setup:
+    desc: "Crea el storage account para el state remoto y genera backend.hcl"
+    cmds:
+      - |
+        set -euo pipefail
+
+        echo "🧹 Limpiando estado local de Terraform..."
+        if [ -d ".terraform" ]; then
+          rm -rf .terraform
+          echo "   ✅ Carpeta .terraform eliminada"
+        fi
+        if [ -f ".terraform.lock.hcl" ]; then
+          rm -f .terraform.lock.hcl
+          echo "   ✅ Archivo .terraform.lock.hcl eliminado"
+        fi
+        echo ""
+
+        echo "🚀 Creando backend remoto de Terraform en Azure..."
+        RANDOM_SUFFIX=$(openssl rand -hex 4 | tr '[:upper:]' '[:lower:]')
+        STORAGE_NAME="tfstatedsrp4${RANDOM_SUFFIX}"
+        echo "📦 Storage Account: ${STORAGE_NAME}"
+        echo ""
+
+        # 0) Autenticación
+        if ! az account show &> /dev/null; then
+          echo "⚠️  No has iniciado sesión en Azure. Ejecutando az login..."
+          az login
+        fi
+        echo "📋 Suscripción activa:"
+        az account show --query '{Name:name, SubscriptionId:id, State:state}' -o tsv | awk '{print "   " $0}'
+        echo ""
+
+        # 1) Proveedor Microsoft.Storage
+        echo "1️⃣  Verificando proveedor Microsoft.Storage..."
+        STATE=$(az provider show --namespace Microsoft.Storage --query "registrationState" -o tsv)
+        if [ "$STATE" != "Registered" ]; then
+          az provider register --namespace Microsoft.Storage --wait
+          echo "   ✅ Proveedor registrado"
+        else
+          echo "   ✅ Proveedor ya registrado"
+        fi
+
+        # 2) Resource group
+        echo "2️⃣  Resource group para el state..."
+        if az group show --name "{{.BACKEND_RG_NAME}}" &> /dev/null; then
+          echo "   ✅ Ya existe: {{.BACKEND_RG_NAME}}"
+        else
+          az group create \
+            --name "{{.BACKEND_RG_NAME}}" \
+            --location "{{.BACKEND_LOCATION}}" \
+            --output none
+          echo "   ✅ Creado: {{.BACKEND_RG_NAME}}"
+        fi
+
+        # 3) Storage account
+        echo "3️⃣  Storage account..."
+        az storage account create \
+          --resource-group "{{.BACKEND_RG_NAME}}" \
+          --name "${STORAGE_NAME}" \
+          --sku Standard_LRS \
+          --encryption-services blob \
+          --location "{{.BACKEND_LOCATION}}" \
+          --allow-blob-public-access false \
+          --min-tls-version TLS1_2 \
+          --output none
+        echo "   ✅ Creado: ${STORAGE_NAME}"
+        sleep 5
+
+        # 4) Versionado + soft-delete (protege el state)
+        echo "4️⃣  Versionado y soft-delete..."
+        az storage account blob-service-properties update \
+          --account-name "${STORAGE_NAME}" \
+          --resource-group "{{.BACKEND_RG_NAME}}" \
+          --enable-versioning true \
+          --enable-delete-retention true \
+          --delete-retention-days 30 \
+          --output none
+        echo "   ✅ Versionado activado, retención 30 días"
+
+        # 5) Container
+        echo "5️⃣  Container ${CONTAINER_NAME}..."
+        az storage container create \
+          --name "{{.CONTAINER_NAME}}" \
+          --account-name "${STORAGE_NAME}" \
+          --auth-mode login \
+          --output none || true
+        echo "   ✅ Container listo"
+
+        # 6) backend.hcl
+        echo "6️⃣  Generando backend.hcl..."
+        cat > backend.hcl <<EOF
+        resource_group_name  = "{{.BACKEND_RG_NAME}}"
+        storage_account_name = "${STORAGE_NAME}"
+        container_name       = "{{.CONTAINER_NAME}}"
+        key                  = "{{.KEY_NAME}}"
+        EOF
+        echo "   ✅ backend.hcl creado"
+        echo ""
+
+        echo "🎉 Backend remoto listo!"
+        echo ""
+        echo "💡 Siguiente paso:"
+        echo "   task init"
+
+  backend:destroy:
+    desc: "Borra el resource group del state remoto (¡cuidado!)"
+    prompt: "Esto destruye el storage account del state. ¿Continuar?"
+    cmds:
+      - az group delete --name "{{.BACKEND_RG_NAME}}" --yes --no-wait
+      - rm -f backend.hcl
+      - echo "🗑️  Resource group del state programado para borrado."
+
+  # ──────────────────────────────────────────────────────────────────────
+  # CICLO DE VIDA DE TERRAFORM
+  # ──────────────────────────────────────────────────────────────────────
+
+  init:
+    desc: "terraform init con el backend remoto (backend.hcl)"
+    preconditions:
+      - sh: test -f backend.hcl
+        msg: "Falta backend.hcl. Corre primero: task backend:setup"
+    cmds:
+      - terraform init -backend-config=backend.hcl -input=false
+
+  fmt:
+    desc: "Formatea los archivos .tf"
+    cmds:
+      - terraform fmt -recursive
+
+  validate:
+    desc: "Valida la sintaxis de los .tf"
+    cmds:
+      - terraform validate
+
+  plan:
+    desc: "terraform plan con dsrp-values.tfvars"
+    preconditions:
+      - sh: test -f {{.TFVARS_FILE}}
+        msg: "Falta {{.TFVARS_FILE}}. Copia el .example: cp dsrp-values.tfvars.example {{.TFVARS_FILE}} y edítalo."
+    cmds:
+      - terraform plan -var-file={{.TFVARS_FILE}} -out=tfplan
+
+  apply:
+    desc: "Aplica el plan (si existe tfplan) o ejecuta terraform apply con tfvars"
+    cmds:
+      - |
+        if [ -f tfplan ]; then
+          terraform apply tfplan
+          rm -f tfplan
+        else
+          terraform apply -var-file={{.TFVARS_FILE}} -auto-approve
+        fi
+
+  destroy:
+    desc: "Destruye toda la infraestructura del módulo (VM, NSG, IP, etc.)"
+    prompt: "Esto destruye la VM y todos los recursos. ¿Continuar?"
+    cmds:
+      - terraform destroy -var-file={{.TFVARS_FILE}} -auto-approve
+
+  outputs:
+    desc: "Muestra los outputs de Terraform"
+    cmds:
+      - terraform output
+
+  # ──────────────────────────────────────────────────────────────────────
+  # OPERAR LA VM RECIÉN CREADA
+  # ──────────────────────────────────────────────────────────────────────
+
+  ssh:
+    desc: "Hace SSH a la VM provisionada"
+    cmds:
+      - eval $(terraform output -raw ssh_command)
+
+  logs:
+    desc: "Sigue los logs del trainer en la VM"
+    cmds:
+      - |
+        IP=$(terraform output -raw public_ip)
+        KEY=$(ls ssh/*.pem | head -1)
+        ssh -i "$KEY" -o StrictHostKeyChecking=no azureuser@"$IP" \
+          "sudo journalctl -u dsrp-trainer.service -f"
+
+  trainer:rerun:
+    desc: "Vuelve a ejecutar el trainer en la VM (systemd oneshot)"
+    cmds:
+      - |
+        IP=$(terraform output -raw public_ip)
+        KEY=$(ls ssh/*.pem | head -1)
+        ssh -i "$KEY" -o StrictHostKeyChecking=no azureuser@"$IP" \
+          "sudo systemctl start dsrp-trainer.service && sudo journalctl -u dsrp-trainer.service -n 50 --no-pager"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # UTILS
+  # ──────────────────────────────────────────────────────────────────────
+
+  clean:
+    desc: "Borra artefactos locales (.terraform, planes, llaves SSH)"
+    prompt: "Borrar .terraform, tfplan, ssh/ y *.tfstate.backup local. ¿Continuar?"
+    cmds:
+      - rm -rf .terraform tfplan ssh/
+      - rm -f .terraform.lock.hcl terraform.tfstate.backup
+      - echo "🧹 Artefactos locales eliminados."

@@ -1,0 +1,64 @@
+#cloud-config
+# Cloud-init script: installs Docker, optionally logs into GHCR, and runs the
+# Telco trainer container once on first boot. The container reads the CSV from
+# Azure Blob Storage and pushes the trained .pkl back to it.
+
+package_update: true
+package_upgrade: false
+
+write_files:
+  - path: /etc/dsrp/trainer.env
+    permissions: "0600"
+    owner: root:root
+    content: |
+      AZURE_STORAGE_CONNECTION_STRING=${conn_str}
+      AZURE_STORAGE_CONTAINER=${container}
+
+  - path: /usr/local/bin/run-trainer.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      IMAGE="${image_ref}"
+      GHCR_USER="${ghcr_user}"
+      GHCR_TOKEN="${ghcr_token}"
+
+      if [[ -n "$GHCR_TOKEN" && -n "$GHCR_USER" ]]; then
+        echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      fi
+
+      echo "[run-trainer] pulling $IMAGE"
+      docker pull "$IMAGE"
+
+      echo "[run-trainer] running trainer"
+      docker run --rm \
+        --env-file /etc/dsrp/trainer.env \
+        --name dsrp-trainer \
+        "$IMAGE"
+
+  - path: /etc/systemd/system/dsrp-trainer.service
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Unit]
+      Description=DSRP módulo 4 — one-shot trainer
+      After=docker.service network-online.target
+      Wants=docker.service network-online.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/run-trainer.sh
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - [ sh, -c, "curl -fsSL https://get.docker.com | sh" ]
+  - [ usermod, -aG, docker, "${admin_user}" ]
+  - [ systemctl, enable, --now, docker ]
+  - [ systemctl, enable, dsrp-trainer.service ]
+  - [ systemctl, start, dsrp-trainer.service ]
