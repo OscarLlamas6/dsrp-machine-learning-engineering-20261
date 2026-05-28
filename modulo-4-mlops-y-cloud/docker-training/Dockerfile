@@ -14,8 +14,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY train.py ./
 
-# Non-root user
-RUN useradd --create-home --shell /bin/bash trainer
-USER trainer
 
 ENTRYPOINT ["python", "-u", "train.py"]
