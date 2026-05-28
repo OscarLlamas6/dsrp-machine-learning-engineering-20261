@@ -1,7 +1,8 @@
 #cloud-config
 # Cloud-init script: installs Docker, optionally logs into GHCR, and runs the
-# Telco trainer container once on first boot. The container reads the CSV from
-# Azure Blob Storage and pushes the trained .pkl back to it.
+# Telco trainer container once on first boot via systemd `oneshot`. If a
+# `schedule` (systemd OnCalendar expression) is provided, also installs a
+# `dsrp-trainer.timer` so the trainer re-runs on that cadence.
 
 package_update: true
 package_upgrade: false
@@ -56,9 +57,31 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
+  # Always install the timer unit; whether it gets *enabled* is decided by the
+  # runcmd block below based on the `schedule` template var. Persistent=true
+  # makes systemd run a missed firing once the VM comes back up.
+  - path: /etc/systemd/system/dsrp-trainer.timer
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Unit]
+      Description=DSRP módulo 4 — scheduled trainer (cron-like)
+
+      [Timer]
+      OnCalendar=${schedule == "" ? "hourly" : schedule}
+      Persistent=true
+      Unit=dsrp-trainer.service
+
+      [Install]
+      WantedBy=timers.target
+
 runcmd:
   - [ sh, -c, "curl -fsSL https://get.docker.com | sh" ]
   - [ usermod, -aG, docker, "${admin_user}" ]
   - [ systemctl, enable, --now, docker ]
   - [ systemctl, enable, dsrp-trainer.service ]
   - [ systemctl, start, dsrp-trainer.service ]
+  # Enable the timer only when the user actually set a schedule. If empty we
+  # leave the timer unit on disk but disabled, so it's easy to flip on later
+  # with: sudo systemctl enable --now dsrp-trainer.timer
+  - [ sh, -c, "[ -n '${schedule}' ] && systemctl enable --now dsrp-trainer.timer || echo '[cloud-init] trainer_schedule empty — timer left disabled'" ]

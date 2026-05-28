@@ -18,6 +18,9 @@ vars:
   # Variables de la infraestructura del módulo
   TFVARS_FILE:        "dsrp-values.tfvars"
 
+  # .env de la raíz del repo — destino para `task creds:export`
+  REPO_ENV_FILE:      "../../.env"
+
 tasks:
 
   default:
@@ -109,7 +112,7 @@ tasks:
         echo "   ✅ Versionado activado, retención 30 días"
 
         # 5) Container
-        echo "5️⃣  Container ${CONTAINER_NAME}..."
+        echo "5️⃣  Container {{.CONTAINER_NAME}}..."
         az storage container create \
           --name "{{.CONTAINER_NAME}}" \
           --account-name "${STORAGE_NAME}" \
@@ -193,14 +196,162 @@ tasks:
     cmds:
       - terraform output
 
+  deploy:
+    desc: "One-shot: backend:setup → init → apply. Pensado para empezar desde cero."
+    prompt: "Esto crea el backend remoto (si no existe), inicializa Terraform y aplica con auto-approve. ¿Continuar?"
+    preconditions:
+      - sh: test -f {{.TFVARS_FILE}}
+        msg: "Falta {{.TFVARS_FILE}}. Copia el ejemplo: cp dsrp-values.tfvars.example {{.TFVARS_FILE}} y edítalo."
+    cmds:
+      - task: backend:setup
+      - task: init
+      - terraform apply -var-file={{.TFVARS_FILE}} -auto-approve
+      - task: creds:export
+      - echo ""
+      - echo "✅ Infra arriba. SSH lista en 'task ssh'. Logs en 'task logs'."
+
+  creds:export:
+    desc: "Escribe la connection string del storage en ../../.env (para correr los notebooks localmente)"
+    cmds:
+      - |
+        set -euo pipefail
+        CS=$(terraform output -raw azure_storage_connection_string)
+        SA=$(terraform output -raw storage_account_name)
+        CT=$(terraform output -raw storage_container_name)
+        ENV_FILE="{{.REPO_ENV_FILE}}"
+        touch "$ENV_FILE"
+        # Quita líneas previas con las mismas claves para que sea idempotente.
+        tmp=$(mktemp)
+        grep -vE '^(AZURE_STORAGE_CONNECTION_STRING|AZURE_STORAGE_CONTAINER|AZURE_STORAGE_ACCOUNT)=' "$ENV_FILE" > "$tmp" || true
+        {
+          cat "$tmp"
+          echo "AZURE_STORAGE_ACCOUNT=$SA"
+          echo "AZURE_STORAGE_CONTAINER=$CT"
+          echo "AZURE_STORAGE_CONNECTION_STRING=\"$CS\""
+        } > "$ENV_FILE"
+        rm -f "$tmp"
+        echo "🔐 .env actualizado:"
+        echo "   AZURE_STORAGE_ACCOUNT=$SA"
+        echo "   AZURE_STORAGE_CONTAINER=$CT"
+        echo "   AZURE_STORAGE_CONNECTION_STRING=<oculta>"
+        echo ""
+        echo "💡 .env está en .gitignore — no se commitea."
+
   # ──────────────────────────────────────────────────────────────────────
   # OPERAR LA VM RECIÉN CREADA
   # ──────────────────────────────────────────────────────────────────────
 
   ssh:
-    desc: "Hace SSH a la VM provisionada"
+    desc: "Hace SSH a la VM provisionada (NSG ya está restringido a tu IP/32)"
     cmds:
-      - eval $(terraform output -raw ssh_command)
+      - |
+        IP=$(terraform output -raw public_ip)
+        CIDR=$(terraform output -raw ssh_allowed_cidr_effective)
+        KEY=$(ls ssh/*.pem | head -1)
+        echo "🔑 IP destino : $IP"
+        echo "🛡️  NSG abierto: $CIDR"
+        echo ""
+        echo "Comandos útiles dentro de la VM:"
+        echo "  docker ps -a                                   # contenedores"
+        echo "  docker images                                  # imágenes"
+        echo "  docker logs dsrp-trainer                       # logs (si todavía no se borró)"
+        echo "  docker run --rm -it --env-file /etc/dsrp/trainer.env --entrypoint bash <image>   # explorar interactivo"
+        echo "  sudo journalctl -u dsrp-trainer.service -n 100 # log del oneshot"
+        echo "  sudo cat /usr/local/bin/run-trainer.sh         # script que corre Docker"
+        echo "  sudo cat /etc/dsrp/trainer.env                 # env vars (incl. conn string)"
+        echo "  sudo systemctl list-timers dsrp-trainer.timer  # próximo disparo"
+        echo ""
+      - ssh -i "$(ls ssh/*.pem | head -1)" -o StrictHostKeyChecking=no azureuser@"$(terraform output -raw public_ip)"
+
+  vm:check-skus:
+    desc: "Lista SKUs de 2 vCPU disponibles para tu suscripción en la región de tfvars (úsalo ANTES de cambiar vm_size o location)"
+    cmds:
+      - |
+        set -euo pipefail
+        REGION=$(grep -E '^[[:space:]]*location' {{.TFVARS_FILE}} 2>/dev/null | head -1 | sed -E 's/.*"([^"]+)"/\1/' || echo "centralus")
+        SKU=$(grep -E '^[[:space:]]*vm_size' {{.TFVARS_FILE}} 2>/dev/null | head -1 | sed -E 's/.*"([^"]+)"/\1/' || echo "Standard_D2as_v4")
+        echo "📍 Región configurada en tfvars : $REGION"
+        echo "🖥️  VM size configurado en tfvars: $SKU"
+        echo ""
+        echo "─── ¿Está disponible el SKU configurado? ───"
+        STATUS=$(az vm list-skus --location "$REGION" --resource-type virtualMachines \
+                   --query "[?name=='$SKU'] | length(@)" -o tsv)
+        if [ "$STATUS" = "0" ]; then
+          echo "❌ $SKU NO está ofrecido en $REGION para tu suscripción."
+        else
+          REASON=$(az vm list-skus --location "$REGION" --resource-type virtualMachines \
+                     --query "[?name=='$SKU'].restrictions[].reasonCode | [0]" -o tsv)
+          if [ -z "$REASON" ]; then
+            echo "✅ $SKU está disponible en $REGION."
+          else
+            echo "🚫 $SKU está restringido en $REGION ($REASON)."
+          fi
+        fi
+        echo ""
+        echo "─── Alternativas (2 vCPU, 4-8 GiB, sin restricción, en familia con quota) en $REGION ───"
+        az vm list-skus --location "$REGION" --resource-type virtualMachines -o json | \
+          jq -r '
+            [.[] |
+              select(.resourceType=="virtualMachines") |
+              select(any(.capabilities[]; .name=="vCPUs" and (.value|tonumber)==2)) |
+              select(any(.capabilities[]; .name=="MemoryGB" and (.value|tonumber)>=4 and (.value|tonumber)<=8)) |
+              select((.restrictions // []) | length == 0) |
+              {name, mem: ([.capabilities[] | select(.name=="MemoryGB") | .value][0])}
+            ] |
+            sort_by(.name)[] | "  \(.name)  (2 vCPU / \(.mem) GiB)"
+          '
+        echo ""
+        echo "─── Tu quota actual en $REGION (familias con limit>0) ───"
+        az vm list-usage --location "$REGION" \
+          --query "[?to_number(limit)>\`0\` && (contains(localName,'Family vCPU') || contains(localName,'Regional vCPU'))].{Family:localName, Used:currentValue, Limit:limit}" \
+          -o table
+
+  vm:nsg-refresh-ip:
+    desc: "Re-aplica Terraform para actualizar el NSG con tu IP pública actual (usar si te cambia el IP)"
+    cmds:
+      - |
+        if [ "$(terraform output -raw ssh_allowed_cidr_effective 2>/dev/null | grep -c '/32')" = "0" ]; then
+          echo "⚠️  ssh_allowed_cidr no está en modo 'auto' (o fijo a /32). Edita tfvars si quieres auto-detect."
+        fi
+      - terraform apply -var-file={{.TFVARS_FILE}} -auto-approve -target=azurerm_network_security_group.nsg
+      - terraform output -raw ssh_allowed_cidr_effective
+      - echo ""
+
+  vm:docker-ps:
+    desc: "Lista contenedores Docker en la VM (running + parados)"
+    cmds:
+      - |
+        IP=$(terraform output -raw public_ip)
+        KEY=$(ls ssh/*.pem | head -1)
+        ssh -i "$KEY" -o StrictHostKeyChecking=no azureuser@"$IP" "docker ps -a"
+
+  vm:docker-images:
+    desc: "Lista imágenes Docker en la VM"
+    cmds:
+      - |
+        IP=$(terraform output -raw public_ip)
+        KEY=$(ls ssh/*.pem | head -1)
+        ssh -i "$KEY" -o StrictHostKeyChecking=no azureuser@"$IP" "docker images"
+
+  vm:docker-inspect:
+    desc: "Inspecciona la imagen del trainer en la VM (labels, env, layers)"
+    cmds:
+      - |
+        IP=$(terraform output -raw public_ip)
+        KEY=$(ls ssh/*.pem | head -1)
+        IMG=$(terraform output -raw image_ref)
+        ssh -i "$KEY" -o StrictHostKeyChecking=no azureuser@"$IP" \
+          "docker image inspect $IMG --format '{{println \"=== ID ===\"}}{{.Id}}{{println}}{{println \"=== Created ===\"}}{{.Created}}{{println}}{{println \"=== Entrypoint ===\"}}{{json .Config.Entrypoint}}{{println}}{{println \"=== Env ===\"}}{{range .Config.Env}}{{println .}}{{end}}{{println \"=== Labels ===\"}}{{json .Config.Labels}}'"
+
+  vm:docker-shell:
+    desc: "Abre un shell DENTRO de la imagen del trainer en la VM (no toca el trainer corriendo)"
+    cmds:
+      - |
+        IP=$(terraform output -raw public_ip)
+        KEY=$(ls ssh/*.pem | head -1)
+        IMG=$(terraform output -raw image_ref)
+        ssh -i "$KEY" -t -o StrictHostKeyChecking=no azureuser@"$IP" \
+          "docker run --rm -it --env-file /etc/dsrp/trainer.env --entrypoint bash $IMG"
 
   logs:
     desc: "Sigue los logs del trainer en la VM"
@@ -219,6 +370,38 @@ tasks:
         KEY=$(ls ssh/*.pem | head -1)
         ssh -i "$KEY" -o StrictHostKeyChecking=no azureuser@"$IP" \
           "sudo systemctl start dsrp-trainer.service && sudo journalctl -u dsrp-trainer.service -n 50 --no-pager"
+
+  trainer:status:
+    desc: "Estado del service + timer del trainer en la VM"
+    cmds:
+      - |
+        IP=$(terraform output -raw public_ip)
+        KEY=$(ls ssh/*.pem | head -1)
+        ssh -i "$KEY" -o StrictHostKeyChecking=no azureuser@"$IP" "\
+          echo '── dsrp-trainer.service ──' && \
+          sudo systemctl status dsrp-trainer.service --no-pager -l || true; \
+          echo; echo '── dsrp-trainer.timer ──' && \
+          sudo systemctl status dsrp-trainer.timer --no-pager -l || true; \
+          echo; echo '── próximos disparos ──' && \
+          sudo systemctl list-timers dsrp-trainer.timer --no-pager || true"
+
+  trainer:schedule:on:
+    desc: "Habilita la corrida programada en la VM (usa el OnCalendar del .timer)"
+    cmds:
+      - |
+        IP=$(terraform output -raw public_ip)
+        KEY=$(ls ssh/*.pem | head -1)
+        ssh -i "$KEY" -o StrictHostKeyChecking=no azureuser@"$IP" \
+          "sudo systemctl enable --now dsrp-trainer.timer && sudo systemctl list-timers dsrp-trainer.timer --no-pager"
+
+  trainer:schedule:off:
+    desc: "Apaga la corrida programada en la VM"
+    cmds:
+      - |
+        IP=$(terraform output -raw public_ip)
+        KEY=$(ls ssh/*.pem | head -1)
+        ssh -i "$KEY" -o StrictHostKeyChecking=no azureuser@"$IP" \
+          "sudo systemctl disable --now dsrp-trainer.timer && echo 'timer apagado'"
 
   # ──────────────────────────────────────────────────────────────────────
   # UTILS

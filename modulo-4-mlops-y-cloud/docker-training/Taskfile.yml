@@ -1,0 +1,56 @@
+version: '3'
+
+# Tareas para construir y correr la imagen del trainer en TU laptop.
+# La idea es probar el contenedor antes de que CI lo publique a GHCR
+# o antes de que Terraform lo levante en la VM.
+
+vars:
+  IMAGE:        "dsrp-modulo4-trainer:local"
+  CONTEXT:      "."                       # este Taskfile vive en docker-training/
+  DOCKERFILE:   "Dockerfile"
+  # .env de la raíz del repo (creado por `task creds:export` en terraform/)
+  REPO_ENV:     "../../.env"
+
+tasks:
+
+  default:
+    desc: "Lista las tareas disponibles"
+    cmds:
+      - task --list
+
+  build:
+    desc: "Construye la imagen local (dsrp-modulo4-trainer:local)"
+    cmds:
+      - docker build -t {{.IMAGE}} -f {{.DOCKERFILE}} {{.CONTEXT}}
+
+  run:
+    desc: "Corre el trainer localmente leyendo credenciales del .env de la raíz"
+    preconditions:
+      - sh: test -f {{.REPO_ENV}}
+        msg: |
+          Falta {{.REPO_ENV}} con AZURE_STORAGE_CONNECTION_STRING.
+          Genéralo desde Terraform con:
+              cd ../terraform && task creds:export
+          o escríbelo a mano (ver README de este módulo).
+    cmds:
+      - |
+        docker run --rm \
+          --env-file {{.REPO_ENV}} \
+          --name dsrp-trainer-local \
+          {{.IMAGE}}
+
+  build-run:
+    desc: "build + run en una sola tarea"
+    cmds:
+      - task: build
+      - task: run
+
+  shell:
+    desc: "Abre un shell dentro de la imagen (sobrescribe el ENTRYPOINT)"
+    cmds:
+      - docker run --rm -it --env-file {{.REPO_ENV}} --entrypoint /bin/bash {{.IMAGE}}
+
+  clean:
+    desc: "Borra la imagen local"
+    cmds:
+      - docker image rm {{.IMAGE}} || true
